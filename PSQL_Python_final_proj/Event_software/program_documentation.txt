@@ -1,0 +1,199 @@
+Program overview:
+
+    This program allows an event planner to connect to a postgres database and input, retrieve, and delete
+    data both interactively through the app and through an HTML form. The methods have been implemented in a way
+    to reinforce object and methood reuse for multiple applications and use-cases. The same code can be used for both
+    interactive app interfacing as well as HTML value retrieval.
+
+Description of classes and methods:
+
+    >>>  Database.py  <<<
+
+        ** 2 classes, 7 methods **
+
+        ~ Class Database:
+
+            Main utility includes initializing the postgreSQL database, getting a connection, returning a connection,
+            and closing all connections from a database.
+
+            This class has one private class property not linked to any one database object (is not included inside __init__).
+            This property is a connection pool which is initialized to None. A connection pool is a pool of N connections
+            which are all opened at once and used only as needed to save time opening new connections whenever the database
+            needs to be interacted with. Opening of a connection is the slowest part of the process. Having a connection pool
+            with N connections allows the program to get an active connection when needed, and put it back into the pool when
+            the connection is no longer required.
+
+            > Static method: initialise()
+                Utilizes the psycopg method SimpleConnectionPool to open a connection pool with a minimum of one
+                connection and a maximum of 10 connections. This method is also passed any number of keyword arguments (**kwargs)
+                which include information about the database like its hostname, username, password. Because this method
+                initialises a connection pool and the connection pool property lives at the class level outside of __init__,
+                initialise() only has to be called once when the app is run. This method is static for this reason, it
+                does not reference the class not current method and so we can directly call initialise without passing a
+                'self' parameter.
+
+            > Class method: get_connection()
+                Returns an available connection from the connection pool or NoneType if a no unused connections
+                exist.
+
+            > Class method: return_connection()
+                Puts a connection back into the connection pool after use, freeing up space in the pool for later.
+
+            > Class method: close_all_connections()
+                Closes all active connections and returns them to the connection pool.
+
+
+        ~ Class CursorFromConnectionFromPool:
+
+            The use of this connection pool is quite sophisticated (see .py files). When the 'with' constructor is called on
+            CursorFromConnectionPool class, connecting, committing and closing are not required programatically.
+            This class has __init__, __enter__, and  __exit__ which specify when to connect, commit, and close the connection
+            when 'with' is called on CursorFromConnectionFromPool. Including __init__, __enter__, and __exit__ within the
+            class, and calling with on the class directly allows a connection to be opened automatically, data to be inserted,
+            the data committed automatically, and the connection to be closed.
+
+            Another important reason for handling the connecting, commiting, and closing within this class is that it is
+            beneficial to keep the connection pool private to other parts of the program and other users. If get_conn() and
+            put_conn() could be called directly on Database.connection_pool, any part of the program or any user could manipulate
+            the pool. This is also why the __connection_pool property was specificed to be private (2 leading underscores).
+
+            > Reversed method (constructor): __init__()
+                When an object is instantiated from this class, its base constructor sets two properties, connection and cursor,
+                to None.
+
+            > Magic method (context manager): __enter__()
+                Defines what should happen at the beginning of the 'with' block. Sets connection property to an available
+                connection taken from the connection pool. Sets curso property to a cursor() taken from the connection
+                property.
+
+            > Magic method (context manager): __exit__()
+                Defines what should happen after 'with' block has been executed. If an exception is raised (such as a ValueError,
+                AttributeError, TypeError), the connection is rolled back the data is erased. If no exception is thrown,
+                close the cursor and commit the request.
+
+             ** In all cases, the connection is always put back.
+
+
+
+    >>>  User.py  <<<
+
+        ** 1 class, 5 methods **
+
+        ~ Class User:
+
+            Objects of the User class represent clients of the event planning business. In other words, User objects hold
+            all the required information about the clients. This client information can be saved and loaded from the database.
+
+            > Reserved method (constructor): __init__()
+                When an object is instantiated from this class, its base constructor initializes 6 properties, 5 of which
+                are passed as actual parameters and one, id, which is initialized to None (because this field is set to
+                SERIAL within the postgreSQL database and will auto increment). These properties include the users email,
+                phone number, first name, last name, and membership level (Basic, Premium, and VIP).
+
+            > Magic method: __repr__()
+                Overrides print statement when print() is called on a User object. Instead of printing out the memory
+                location allocated to the User object, the clients first name, last name, email, and id are printed out.
+
+            > Class method: save_to_db()
+                  This method uses the 'with' block containing the CursorFromConnectionFromPool method to open a connection
+                  to the database, insert the user properties (client information) into the postgreSQL client table, commit
+                  the data, and close the connection.
+
+            > Class method: load_from_db_by_email()
+                This method uses the 'with' block containing the CursorFromConnectionFromPool method to open a connection
+                to the database, selects all data where the client_email column of our postgre client table matches the
+                specified user email address, and returns a user object containing that information if the client exists
+                in the database. The connection is then closed. If the client does not exist in the
+                database, a warning tells the user that the client does not have an email within the database.
+
+            > Class method: delete_user_from_db()
+                This method uses the 'with' block containing the CursorFromConnectionFromPool method to open a connection
+                to the database, deletes rows where the client_email column of our postgre client table matches the specified
+                user email address. The connection is then closed. The app then sends a notification that the user has been
+                removed from the system.
+
+
+
+
+    >>>  Event.py  <<<
+
+        ** 1 class, 5 methods **
+
+        ~ Class User:
+            Objects of the Event class represent events which the event planning business offers to its clients. In other
+            words, Event objects hold all the required information about each event. The event information can be saved and
+             loaded from the database.
+
+
+             > Reserved method (constructor): __init__()
+                When an object is instantiated from this class, its base constructor initializes 8 properties, 7 of which are
+                passed as actual parameters and one, id, which is initialized to None (because this field is set to SERIAL within
+                the postgreSQL database and will auto increment). These properties include the events name, the name of the
+                company hosting the event, the location of the event, the date of the event, the time of the event, the price
+                of the event per client, and the number of clients for each party (party size).
+
+            > Magic method: __repr__()
+                Overrides print statement when print() is called on an Event object. Instead of printing out the memory
+                location allocated to the Event object, the event name, company name, event location, event date, and event
+                time are printed out.
+
+            > Class method: save_to_db()
+                  This method uses the 'with' block containing the CursorFromConnectionFromPool method to open a connection
+                  to the database, insert the event properties (event information) into the postgreSQL event table, commit
+                  the data, and close the connection.
+
+            > Class method: load_from_db_by_name()
+                This method uses the 'with' block containing the CursorFromConnectionFromPool method to open a connection
+                to the database, selects
+                all data where the event_name column of our postgres event table matches the specified event name, and returns
+                an event object containing that information if the event exists in the database. The connection is then closed.
+                If the event does not exist in the database, a warning tells the user that the event does not exist in the database.
+
+            > Class method: delete_event_from_db()
+                This method uses the 'with' block containing the CursorFromConnectionFromPool method to open a connection
+                to the database, delete rows where the event_name column of our postgrese event table matched the specified
+                event name. The connection is then closed. The app then sends a notification that the event has been removed
+                from the system.
+
+
+
+    >>>  Purchases.py  <<<
+
+        ** 1 class, 4 methods **
+
+        ~ Class Purchase:
+            Objects of the Purchase class represent purchase information stored to be stored in the database. Purchase objects
+            only hold linking ids used to match users to the events they have purchased. The event information can be saved
+            and loaded from the database via these ids.
+
+
+             > Reserved method (constructor): __init__()
+                When an object is instantiated from this class, its base constructor initializes 3 properties, 2 of which are
+                passed as actual parameters and one, id, which is initialized to None (because this field is set to SERIAL within
+                the postgreSQL database and will auto increment). These properties include the client id and event id associated
+                with the purchase id.
+
+            > Magic method: __repr__()
+                Overrides print statement when print() is called on a Purchase object. Instead of printing out the memory
+                location allocated to the Purchase object, the purchase id, client id, and event id are printed out.
+
+            > Class method: save_to_db()
+                  This method uses the 'with' block containing the CursorFromConnectionFromPool method to open a connection
+                  to the database, insert the purchase properties (purchase information) into the postgreSQL purchase table,
+                  commit the data, and close the connection.
+
+            > Class method: load_from_db_by_name()
+                This method uses the 'with' block containing the CursorFromConnectionFromPool method to open a connection
+                to the database, selects all data where the purchase_id column of our postgre purchases table matches the specified
+                purchase id, and returns a purchase object containing that information if the purchase exists in the database.
+                If the purchase does not exist in the database, a warning tells the user that the purchase does not exist in
+                the database.
+
+
+
+
+
+
+
+
+
